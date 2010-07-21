@@ -36,12 +36,14 @@ class TestZipImportX(unittest.TestCase):
         lib = os.path.abspath(os.path.join(os.path.dirname(__file__),lib))
         if not os.path.exists(lib):
             zf = zipfile.PyZipFile(lib,"w")
+            zf.writepy(os.path.dirname(zipimportx.__file__))
             zf.writepy(LIBHOME)
             zf.close()
         lib = "liblarge.zip"
         lib = os.path.abspath(os.path.join(os.path.dirname(__file__),lib))
         if not os.path.exists(lib):
             zf = zipfile.PyZipFile(lib,"w")
+            zf.writepy(os.path.dirname(zipimportx.__file__))
             zf.writepy(LIBHOME)
             for (dirnm,subdirs,files) in os.walk(LIBHOME):
                 if "__init__.pyc" in files:
@@ -57,8 +59,17 @@ class TestZipImportX(unittest.TestCase):
         }
         for libnm in ratios:
             lib = os.path.abspath(os.path.join(os.path.dirname(__file__),libnm))
-            (zt,xt) = self._do_timeit_compare(lib)
+            (zt,xt) = self._do_timeit_init(lib)
+            print zt, xt, zt/xt
             self.assertTrue(zt/xt > ratios[libnm])
+        for libnm in ratios:
+            lib = os.path.abspath(os.path.join(os.path.dirname(__file__),libnm))
+            (zt,xt) = self._do_timeit_load(lib)
+            print zt, xt, zt/xt
+            #  A 15% decrease in loading performance?  Yes, but you have
+            #  to remember that the load time is a *very* small number.
+            #  The absolute difference is measured in microseconds.
+            self.assertTrue(zt/xt > 0.85)
 
     def test_space_overhead(self):
         for lib in ("libsmall.zip","libmedium.zip","liblarge.zip"):
@@ -70,17 +81,55 @@ class TestZipImportX(unittest.TestCase):
             self.assertEquals(x_size_p,x_size_w)
             self.assertTrue(z_size / x_size_p > 40)
 
-    def _do_timeit_compare(self,lib):
-        """Return a pair (ztime,xtime) giving unindexed and indexed times."""
+    def test_import_still_works(self):
+        lib = "libsmall.zip"
+        lib = os.path.abspath(os.path.join(os.path.dirname(__file__),lib))
+        i = zipimportx.zipimporter(lib)
+        self.assertTrue(i.find_module("zipimportx") is i)
+        self.assertTrue(i.find_module("nonexistent") is None)
+        fn = lib + os.sep + os.path.join("zipimportx","__init__.pyc")
+        self.assertEquals(i._get_filename("zipimportx"),fn)
+        zipimport._zip_directory_cache.clear()
+        i = zipimportx.zipimporter(lib)
+        zx2 = i.load_module("zipimportx")
+        self.assertTrue("zipimporter" in zx2.__dict__)
+        self.assertEquals(zx2.__file__,fn)
+        #  Also check that importing from a subdir works correctly.
+        i2 = zipimportx.zipimporter(lib+os.sep+"zipimportx")
+        zxT = i2.load_module("tests")
+        self.assertTrue("TestZipImportX" in zxT.__dict__)
+        fn = lib + os.sep + os.path.join("zipimportx","tests","__init__.pyc")
+        self.assertEquals(zxT.__file__,fn)
+        
+
+    def _do_timeit_init(self,lib):
+        """Return unindexed and indexed initialisation times."""
         z_setupcode = "import zipimport"
-        z_testcode = "zipimport._zip_directory_cache.clear(); " \
-                     "zipimport.zipimporter(%r)" % (lib,)
+        z_testcode = "".join(("zipimport._zip_directory_cache.clear(); ",
+                              "i = zipimport.zipimporter(%r); " % (lib,)))
         z_timer = timeit.Timer(z_testcode,z_setupcode)
         z_time = min(self._do_timeit3(z_timer))
         x_setupcode = "import zipimport; import zipimportx; " \
                       "zipimportx.zipimporter(%r).write_index()" % (lib,)
-        x_testcode = "zipimport._zip_directory_cache.clear(); " \
-                     "zipimportx.zipimporter(%r)" % (lib,)
+        x_testcode = "".join(("zipimport._zip_directory_cache.clear(); ",
+                              "i = zipimportx.zipimporter(%r); " % (lib,)))
+        x_timer = timeit.Timer(x_testcode,x_setupcode)
+        x_time = min(self._do_timeit3(x_timer))
+        return (z_time,x_time)
+
+    def _do_timeit_load(self,lib):
+        """Return unindexed and indexed load times."""
+        z_setupcode = "import zipimport; " \
+                      "zipimport._zip_directory_cache.clear(); " \
+                      "i = zipimport.zipimporter(%r)" % (lib,)
+        z_testcode = "i.load_module('zipimportx')"
+        z_timer = timeit.Timer(z_testcode,z_setupcode)
+        z_time = min(self._do_timeit3(z_timer))
+        x_setupcode = "".join(("import zipimport; import zipimportx; ",
+                          "zipimportx.zipimporter(%r).write_index(); " % (lib,),
+                          "zipimport._zip_directory_cache.clear(); ",
+                          "i = zipimportx.zipimporter(%r)" % (lib,)))
+        x_testcode = "i.load_module('zipimportx')"
         x_timer = timeit.Timer(x_testcode,x_setupcode)
         x_time = min(self._do_timeit3(x_timer))
         return (z_time,x_time)

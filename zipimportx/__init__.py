@@ -67,6 +67,13 @@ __version__ = "%d.%d.%d%s" % __ver_tuple__
 import sys
 import marshal
 import zipimport
+import errno
+
+
+if sys.platform == "win32":
+    archive_index = ".win32.idx"
+else:
+    archive_index = ".posix.idx"
 
 
 class zipimporter(zipimport.zipimporter):
@@ -77,17 +84,17 @@ class zipimporter(zipimport.zipimporter):
     def __init__(self,archivepath):
         if archivepath not in zipimport._zip_directory_cache:
             #  Pre-populate the zip directory cache using the index file.
-            if sys.platform == "win32":
-               idxfile = archivepath+".win32.idx"
-            else:
-               idxfile = archivepath+".posix.idx"
+            #  Note that this will raise EnvironmentError if we're given
+            #  a path inside the zipfile.  Since that's usually only done if
+            #  the zipfile has already been parse, we don't bother trying
+            #  to detect that case.
             try:
-                with open(idxfile,"rb") as f:
+                with open(archivepath + archive_index,"rb") as f:
                     index = marshal.load(f)
                 zipimport._zip_directory_cache[archivepath] = index
             except EnvironmentError:
                 pass
-        super(zipimporter,self).__init__(archivepath)
+        zipimport.zipimporter.__init__(self,archivepath)
 
     def load_module(self,fullname):
         """load_module(fullname) -> module.
@@ -97,7 +104,7 @@ class zipimporter(zipimport.zipimporter):
         module, or raises ZipImportError if it wasn't found.
         """
         self._fix_filename(fullname)
-        return super(zipimporter,self).load_module(fullname)
+        return zipimport.zipimporter.load_module(self,fullname)
 
     def get_code(self,fullname):
         """get_code(fullname) -> code object.
@@ -106,7 +113,7 @@ class zipimporter(zipimport.zipimporter):
         if the module couldn't be found.
         """
         self._fix_filename(fullname)
-        return super(zipimporter,self).get_code(fullname)
+        return zipimport.zipimporter.get_code(self,fullname)
 
     def _get_filename(self,fullname):
         """_get_filename(fullname) -> filename string.
@@ -114,7 +121,7 @@ class zipimporter(zipimport.zipimporter):
         Return the filename for the specified module.
         """
         self._fix_filename(fullname)
-        return super(zipimporter,self)._get_filename(fullname)
+        return zipimport.zipimporter._get_filename(self,fullname)
 
     def _fix_filename(self,fullname):
         """Fix the __file__ entry in the TOC for the given module.
@@ -125,7 +132,7 @@ class zipimporter(zipimport.zipimporter):
         """
         SEP = "\\" if sys.platform == "win32" else "/"
         modpath = self.prefix
-        if not modpath.endswith(SEP):
+        if modpath and not modpath.endswith(SEP):
             modpath += SEP
         modpath += fullname.replace(".",SEP)
         for suffix in (".py",".pyc",".pyo"):
