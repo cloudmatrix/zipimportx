@@ -79,6 +79,19 @@ else:
 class zipimporter(zipimport.zipimporter):
     """A zipimporter that can use pre-processed index files.
 
+    This is a simple wrapper around the builtin "zipimport" functionality
+    that can use pre-processed index files to speed up initial loading of
+    the file.
+
+    When you open a zipfile for import by doing this::
+
+        loader = zipimportx.zipimporter("mylib.zip")
+
+    It will first check for a file "mylib.zip.win32.idx" (or ".posix.idx" on
+    posix platforms) that is assumed to contain the directory information for
+    the zipfile, pre-precessed in a form that python can load very quickly.
+    It such a file is found, the pre-processed directory information is used
+    instead of parsig it out of the zipfile.
     """
 
     def __init__(self,archivepath):
@@ -86,7 +99,7 @@ class zipimporter(zipimport.zipimporter):
             #  Pre-populate the zip directory cache using the index file.
             #  Note that this will raise EnvironmentError if we're given
             #  a path inside the zipfile.  Since that's usually only done if
-            #  the zipfile has already been parse, we don't bother trying
+            #  the zipfile has already been parsed, we don't bother trying
             #  to detect that case.
             try:
                 with open(archivepath + archive_index,"rb") as f:
