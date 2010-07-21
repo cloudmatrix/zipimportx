@@ -1,0 +1,8 @@
+*.pyc
+*.pyo
+*~
+.*.sw*
+MANIFEST
+build
+dist
+zipimportx/tests/lib*
