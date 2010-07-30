@@ -7,7 +7,7 @@ zipimportx:  faster zip imports using pre-processed index files
 
 
 This package aims to speed up imports from zipfiles, by pre-computing the
-"directory information" dictionary and storing in a separate index file.
+"directory information" dictionary and storing it in a separate index file.
 This reduces the time spent parsing information out of the zipfile.
 
 It exports a single useful name, zipimporter, which is a drop-in replacement
