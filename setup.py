@@ -33,7 +33,6 @@ try:
 except Exception:
     raise
     pass
-print info
 
 
 NAME = "zipimportx"
