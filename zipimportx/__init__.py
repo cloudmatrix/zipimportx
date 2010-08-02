@@ -18,10 +18,10 @@ To create an index for a given zipfile, do the following::
     from zipimportx import zipimporter
     zipimporter("mylib.zip").write_index()
 
-This will create two files, "mylib.zip.win32.idx" and "mylib.zip.posix.idx",
-containing the zipfile directory information pre-parsed and formatted to 
-different path-naming conventions.  (Specifically, they contain a marshalled
-dictionary similar to those found in zipimport._zip_directory_cache.)
+Depending on your platform, this will create either "mylib.zip.win32.idx" or 
+"mylib.zip.posix.idx" containing the pre-parsed zipfile directory information.
+(Specifically, it will contain a marshalled dictionary similar to those found
+in zipimport._zip_directory_cache.)
 
 To enable use of these index files, simply replace the builtin zipimport
 mechanism with zipimportx by doing the following::
@@ -29,8 +29,8 @@ mechanism with zipimportx by doing the following::
     import zipimportx
     zipimportx.zipimporter.install()
 
-In my tests, use of these indexes speeds up the loading of a zipfile by about
-a factor of 3 on Linux, and a factor of 5 on Windows.
+In my tests, use of these indexes speeds up the initial loading of a zipfile by 
+about a factor of 3 on Linux, and a factor of 5 on Windows.
 
 Note that this package uses nothing but builtin modules.  To bootstrap zipfile
 imports for a frozen application, you can inline the module's code directly
@@ -57,7 +57,7 @@ to change.
 """
 
 __ver_major__ = 0
-__ver_minor__ = 1
+__ver_minor__ = 2
 __ver_patch__ = 0
 __ver_sub__ = ""
 __ver_tuple__ = (__ver_major__,__ver_minor__,__ver_patch__,__ver_sub__)
@@ -67,12 +67,13 @@ __version__ = "%d.%d.%d%s" % __ver_tuple__
 import sys
 import marshal
 import zipimport
-import errno
 
 
 if sys.platform == "win32":
+    SEP = "\\"
     archive_index = ".win32.idx"
 else:
+    SEP = "/"
     archive_index = ".posix.idx"
 
 
@@ -91,7 +92,7 @@ class zipimporter(zipimport.zipimporter):
     posix platforms) that is assumed to contain the directory information for
     the zipfile, pre-precessed in a form that python can load very quickly.
     It such a file is found, the pre-processed directory information is used
-    instead of parsig it out of the zipfile.
+    instead of parsing it out of the zipfile.
     """
 
     def __init__(self,archivepath):
@@ -143,7 +144,6 @@ class zipimporter(zipimport.zipimporter):
         this must be added back into the TOC when it's needed.  Fortunately
         it's trivial to calculate.
         """
-        SEP = "\\" if sys.platform == "win32" else "/"
         modpath = self.prefix
         if modpath and not modpath.endswith(SEP):
             modpath += SEP
@@ -160,35 +160,41 @@ class zipimporter(zipimport.zipimporter):
                 except KeyError:
                     pass
 
-    def write_index(self):
+    def write_index(self,platform=None):
         """Create pre-processed index files for this zipimport archive.
 
         This method creates files <archive>.posix.idx and <archive>.win32.idx
         containing a pre-processes index of the zipfile contents found in the
         file <archive>.  This index can then be used to speed up loading of
         the zipfile.
+
+        By default the index is formatted for the path conventions of the
+        current platform; pass platform="win32" or platform="posix" to make
+        an index for a specific platform.
         """
         index = zipimport._zip_directory_cache[self.archive].copy()
         #  Don't store the __file__ field, it won't be correct.
         #  Besides, we can re-create it as needed.
         for (key,info) in index.iteritems():
             index[key] = ("",) + info[1:]
-        #  Store separate index for win32-format and posix-format paths.
-        #  Yuck, but fixing them up at import time is a big performance hit.
-        if sys.platform == "win32":
-            win32_index = index
-            posix_index = {}
-            for (key,info) in index.iteritems():
-                posix_index[key.replace("\\","/")] = info
-        else:
-            posix_index = index
-            win32_index = {}
-            for (key,info) in index.iteritems():
-                win32_index[key.replace("/","\\")] = info
-        with open(self.archive+".win32.idx","wb") as f:
-            marshal.dump(win32_index,f)
-        with open(self.archive+".posix.idx","wb") as f:
-            marshal.dump(posix_index,f)
+        #  Correct for path separators on the requested platform.
+        fileext = archive_index
+        if platform is not None:
+            if sys.platform == "win32" and platform != "win32":
+                fileext = ".posix.idx"
+                win32_index = index
+                index = {}
+                for (key,info) in win32_index.iteritems():
+                    index[key.replace("\\","/")] = info
+            elif sys.platform != "win32" and platform == "win32":
+                fileext = ".win32.idx"
+                posix_index = index
+                index = {}
+                for (key,info) in posix_index.iteritems():
+                    index[key.replace("/","\\")] = info
+        #  Write out to the appropriately-named index file.
+        with open(self.archive+fileext,"wb") as f:
+            marshal.dump(index,f)
 
     @classmethod
     def install(cls):

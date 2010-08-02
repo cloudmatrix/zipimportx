@@ -5,7 +5,7 @@ zipimportx:  faster zip imports using pre-processed index files
 
 
 This package aims to speed up imports from zipfiles, by pre-computing the
-"directory information" dictionary and storing in a separate index file.
+"directory information" dictionary and storing it in a separate index file.
 This reduces the time spent parsing information out of the zipfile.
 
 It exports a single useful name, zipimporter, which is a drop-in replacement
@@ -16,10 +16,10 @@ To create an index for a given zipfile, do the following::
     from zipimportx import zipimporter
     zipimporter("mylib.zip").write_index()
 
-This will create two files, "mylib.zip.win32.idx" and "mylib.zip.posix.idx",
-containing the zipfile directory information pre-parsed and formatted to 
-different path-naming conventions.  (Specifically, they contain a marshalled
-dictionary similar to those found in zipimport._zip_directory_cache.)
+Depending on your platform, this will create either "mylib.zip.win32.idx" or 
+"mylib.zip.posix.idx" containing the pre-parsed zipfile directory information.
+(Specifically, it will contain a marshalled dictionary similar to those found
+in zipimport._zip_directory_cache.)
 
 To enable use of these index files, simply replace the builtin zipimport
 mechanism with zipimportx by doing the following::
@@ -27,8 +27,8 @@ mechanism with zipimportx by doing the following::
     import zipimportx
     zipimportx.zipimporter.install()
 
-In my tests, use of these indexes speeds up the loading of a zipfile by about
-a factor of 3 on Linux, and a factor of 5 on Windows.
+In my tests, use of these indexes speeds up the initial loading of a zipfile by 
+about a factor of 3 on Linux, and a factor of 5 on Windows.
 
 Note that this package uses nothing but builtin modules.  To bootstrap zipfile
 imports for a frozen application, you can inline the module's code directly
