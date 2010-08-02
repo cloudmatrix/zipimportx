@@ -216,3 +216,7 @@ class zipimporter(zipimport.zipimporter):
             sys.path_hooks.append(cls)
 
 
+if __name__ == "__main__":
+    zipimporter.install()
+
+
