@@ -60,12 +60,12 @@ class TestZipImportX(unittest.TestCase):
         for libnm in ratios:
             lib = os.path.abspath(os.path.join(os.path.dirname(__file__),libnm))
             (zt,xt) = self._do_timeit_init(lib)
-            print zt, xt, zt/xt
+            print libnm, zt, xt, zt/xt
             self.assertTrue(zt/xt > ratios[libnm])
         for libnm in ratios:
             lib = os.path.abspath(os.path.join(os.path.dirname(__file__),libnm))
             (zt,xt) = self._do_timeit_load(lib)
-            print zt, xt, zt/xt
+            print libnm, zt, xt, zt/xt
             #  A 15% decrease in loading performance?  Yes, but you have
             #  to remember that the load time is a *very* small number.
             #  The absolute difference is measured in microseconds.
