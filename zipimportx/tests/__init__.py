@@ -1,5 +1,6 @@
 
 import os
+import sys
 import unittest
 import timeit
 import zipimport
@@ -76,10 +77,11 @@ class TestZipImportX(unittest.TestCase):
             lib = os.path.abspath(os.path.join(os.path.dirname(__file__),lib))
             zipimportx.zipimporter(lib).write_index()
             z_size = os.stat(lib).st_size
-            x_size_p = os.stat(lib+".posix.idx").st_size
-            x_size_w = os.stat(lib+".win32.idx").st_size
-            self.assertEquals(x_size_p,x_size_w)
-            self.assertTrue(z_size / x_size_p > 40)
+            if sys.platform == "win32":
+                x_size = os.stat(lib+".win32.idx").st_size
+            else:
+                x_size = os.stat(lib+".posix.idx").st_size
+            self.assertTrue(z_size / x_size > 40)
 
     def test_import_still_works(self):
         lib = "libsmall.zip"
