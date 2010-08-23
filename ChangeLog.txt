@@ -1,5 +1,5 @@
 
-v0.2.1:
+v0.3.0:
 
     * Avoid touching the filesystem if given a path inside an already-loaded
       zipfile (which happens whenever importing from a package).
@@ -12,6 +12,8 @@ v0.2.1:
             hence hitting the filesystem.
           * fortunately, since the import process is mostly IO-bound this has
             not adversely affected the performance of this module.
+    * Always name the index <archivepath>.idx regardless of the platform; if
+      it's found to contain invalid separators then it's ignored.
     * When installing the new zipimporter class, also remove any instances of
       the old class from sys.path_importer_cache
 

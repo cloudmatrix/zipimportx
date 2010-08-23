@@ -22,39 +22,45 @@ LIBHOME = os.path.dirname(unittest.__file__)
 class TestZipImportX(unittest.TestCase):
 
     def setUp(self):
+        #  Create small zipfile with just a few libraries
         lib = "libsmall.zip"
         lib = os.path.abspath(os.path.join(os.path.dirname(__file__),lib))
-        if not os.path.exists(lib):
-            zf = zipfile.PyZipFile(lib,"w",compression=zipfile.ZIP_DEFLATED)
-            zf.writepy(os.path.dirname(zipimportx.__file__))
-            zf.writepy(os.path.dirname(distutils.__file__))
-            zf.writepy(os.path.dirname(logging.__file__))
-            zf.writepy(os.path.dirname(email.__file__))
-            zf.writepy(os.path.dirname(sqlite3.__file__))
-            zf.writepy(os.path.dirname(ctypes.__file__))
-            zf.close()
+        if os.path.exists(lib):
+            os.unlink(lib)
+        zf = zipfile.PyZipFile(lib,"w",compression=zipfile.ZIP_DEFLATED)
+        zf.writepy(os.path.dirname(zipimportx.__file__))
+        zf.writepy(os.path.dirname(distutils.__file__))
+        zf.writepy(os.path.dirname(logging.__file__))
+        zf.writepy(os.path.dirname(email.__file__))
+        zf.writepy(os.path.dirname(sqlite3.__file__))
+        zf.writepy(os.path.dirname(ctypes.__file__))
+        zf.close()
+        #  Create medium zipfile with everything in top-level stdlib
         lib = "libmedium.zip"
         lib = os.path.abspath(os.path.join(os.path.dirname(__file__),lib))
-        if not os.path.exists(lib):
-            zf = zipfile.PyZipFile(lib,"w")
-            zf.writepy(os.path.dirname(zipimportx.__file__))
-            zf.writepy(LIBHOME)
-            zf.close()
+        if os.path.exists(lib):
+            os.unlink(lib)
+        zf = zipfile.PyZipFile(lib,"w")
+        zf.writepy(os.path.dirname(zipimportx.__file__))
+        zf.writepy(LIBHOME)
+        zf.close()
+        #  Create large zipfile with everything we can find
         lib = "liblarge.zip"
         lib = os.path.abspath(os.path.join(os.path.dirname(__file__),lib))
-        if not os.path.exists(lib):
-            zf = zipfile.PyZipFile(lib,"w")
-            zf.writepy(os.path.dirname(zipimportx.__file__))
-            zf.writepy(LIBHOME)
-            for (dirnm,subdirs,files) in os.walk(LIBHOME):
-                if "__init__.pyc" in files:
-                    del subdirs[:]
-                    zf.writepy(dirnm)
-            zf.close()
+        if os.path.exists(lib):
+            os.unlink(lib)
+        zf = zipfile.PyZipFile(lib,"w")
+        zf.writepy(os.path.dirname(zipimportx.__file__))
+        zf.writepy(LIBHOME)
+        for (dirnm,subdirs,files) in os.walk(LIBHOME):
+            if "__init__.pyc" in files:
+                del subdirs[:]
+                zf.writepy(dirnm)
+        zf.close()
 
     def test_performance_increase(self):
         ratios = {
-            "libsmall.zip": 2.5,
+            "libsmall.zip": 2.4,
             "libmedium.zip": 3,
             "liblarge.zip": 3.5,
         }
@@ -67,20 +73,17 @@ class TestZipImportX(unittest.TestCase):
             lib = os.path.abspath(os.path.join(os.path.dirname(__file__),libnm))
             (zt,xt) = self._do_timeit_load(lib)
             print libnm, zt, xt, zt/xt
-            #  A 15% decrease in loading performance?  Yes, but you have
+            #  A 25% decrease in loading performance?  Yes, but you have
             #  to remember that the load time is a *very* small number.
             #  The absolute difference is measured in microseconds.
-            self.assertTrue(zt/xt > 0.85)
+            self.assertTrue(zt/xt > 0.75)
 
     def test_space_overhead(self):
         for lib in ("libsmall.zip","libmedium.zip","liblarge.zip"):
             lib = os.path.abspath(os.path.join(os.path.dirname(__file__),lib))
             zipimportx.zipimporter(lib).write_index()
             z_size = os.stat(lib).st_size
-            if sys.platform == "win32":
-                x_size = os.stat(lib+".win32.idx").st_size
-            else:
-                x_size = os.stat(lib+".posix.idx").st_size
+            x_size = os.stat(lib+".idx").st_size
             self.assertTrue(z_size / x_size > 40)
 
     def test_import_still_works(self):

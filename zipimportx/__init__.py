@@ -19,6 +19,7 @@ With no additional work you may already find a small speedup when importing
 from a zipfile, since zipimportx does fewer stat() calls than the standard
 zipimport implementation.
 
+
 To further speed up the loading of a zipfile, you can pre-compute the 
 "directory information" dictionary and store it in a separate index file.
 This will reduce the time spent parsing information out of the zipfile.
@@ -51,18 +52,13 @@ into your application's startup script.  Do this somewhere in your build::
     ''' % (inspect.getsource(zipimportx),)
 
     freeze_this_script_somehow(SCRIPT)
-    zipimportx.zipimporter("path/to/frozen/library.zip").write_indexes()
-
-Note also that imports will almost certainly *break* if the index does not
-reflect the actual contents of the zipfile.  This module is therefore most
-useful for frozen apps and other situations where the zipfile is not expected
-to change.
+    zipimportx.zipimporter("path/to/frozen/library.zip").write_index()
 
 """
 
 __ver_major__ = 0
-__ver_minor__ = 2
-__ver_patch__ = 1
+__ver_minor__ = 3
+__ver_patch__ = 0
 __ver_sub__ = ""
 __ver_tuple__ = (__ver_major__,__ver_minor__,__ver_patch__,__ver_sub__)
 __version__ = "%d.%d.%d%s" % __ver_tuple__
@@ -77,12 +73,13 @@ import marshal
 import zipimport
 
 
+archive_index = ".idx"
 if sys.platform == "win32":
     SEP = "\\"
-    archive_index = ".win32.idx"
+    BADSEP = "/"
 else:
     SEP = "/"
-    archive_index = ".posix.idx"
+    BADSEP = "\\"
 
 
 
@@ -97,11 +94,10 @@ class zipimporter(zipimport.zipimporter):
 
         loader = zipimportx.zipimporter("mylib.zip")
 
-    It will first check for a file "mylib.zip.win32.idx" (or ".posix.idx" on
-    posix platforms) that is assumed to contain the directory information for
-    the zipfile, pre-precessed in a form that python can load very quickly.
-    It such a file is found, the pre-processed directory information is used
-    instead of parsing it out of the zipfile.
+    It will first check for a file "mylib.zip.idx" that is assumed to contain
+    the directory information for the zipfile, pre-processed in a form that
+    python can load very quickly.  If such a file is found, the pre-processed
+    directory information isused instead of parsing it out of the zipfile.
     """
 
     def __init__(self,archivepath):
@@ -111,7 +107,7 @@ class zipimporter(zipimport.zipimporter):
         #  implementation does this by stat()ing each potential parent file;
         #  we do it by looking in the directory cache.
         archive = archivepath; prefix = ""
-        while True:
+        while archive:
             cached_files = zipimport._zip_directory_cache.get(archive)
             if cached_files is not None:
                 archivepath = archive
@@ -126,20 +122,31 @@ class zipimporter(zipimport.zipimporter):
         #  pointing inside an uncached zipfile, the check will raise EnvError
         #  and fall back to the default zipimport machinery.
         if cached_files is None:
+            prefix = ""
             try:
                 with open(archivepath + archive_index,"rb") as f:
-                    index = marshal.load(f)
-                zipimport._zip_directory_cache[archivepath] = index
+                    cached_files = marshal.load(f)
             except EnvironmentError:
                 pass
-            zipimport.zipimporter.__init__(self,archivepath)
+            else:
+                for path in cached_files.keys():
+                    if SEP in path:
+                        break
+                    if BADSEP in path:
+                        cached_files = None
+                        break
+                if cached_files is not None:
+                    zipimport._zip_directory_cache[archivepath] = cached_files
         #  If the archive is in the cache, we bypass the default implementation
         #  since it wants to keep checking the filesystem for things we know
         #  (well, OK, *assume*) are still there.
-        #  Unfortunately these attributes aren't reflected down in the builtin
-        #  object, so we have to re-implement a host of functionality.
+        #  Unfortunately we can't set the "archive" and "prefix" attributes
+        #  down inside the c-level zipimporter, so we have to re-implement a
+        #  host of its functionality.
+        if cached_files is None:
+            zipimport.zipimporter.__init__(self,archivepath)
         else:
-            self.__dict__["archive"] = archive
+            self.__dict__["archive"] = archivepath
             self.__dict__["prefix"] = prefix
             self.__dict__["_files"] = cached_files
 
@@ -427,13 +434,12 @@ class zipimporter(zipimport.zipimporter):
             raise zipimport.ZipImportError(err)
         return (mi == self.MI_PACKAGE)
 
-    def write_index(self,platform=None):
+    def write_index(self,platform=None,preload=[]):
         """Create pre-processed index files for this zipimport archive.
 
-        This method creates files <archive>.posix.idx and <archive>.win32.idx
-        containing a pre-processes index of the zipfile contents found in the
-        file <archive>.  This index can then be used to speed up loading of
-        the zipfile.
+        This method creates file <self.archive>.idx containing a pre-processed
+        index of the zipfile contents found in the file <self.archive>.  This
+        index can then be used to speed up loading of the zipfile.
 
         By default the index is formatted for the path conventions of the
         current platform; pass platform="win32" or platform="posix" to make
@@ -445,22 +451,19 @@ class zipimporter(zipimport.zipimporter):
         for (key,info) in index.iteritems():
             index[key] = ("",) + info[1:]
         #  Correct for path separators on the requested platform.
-        fileext = archive_index
         if platform is not None:
             if sys.platform == "win32" and platform != "win32":
-                fileext = ".posix.idx"
                 win32_index = index
                 index = {}
                 for (key,info) in win32_index.iteritems():
                     index[key.replace("\\","/")] = info
             elif sys.platform != "win32" and platform == "win32":
-                fileext = ".win32.idx"
                 posix_index = index
                 index = {}
                 for (key,info) in posix_index.iteritems():
                     index[key.replace("/","\\")] = info
         #  Write out to the appropriately-named index file.
-        with open(self.archive+fileext,"wb") as f:
+        with open(self.archive + archive_index,"wb") as f:
             marshal.dump(index,f)
 
     @classmethod
@@ -479,7 +482,7 @@ class zipimporter(zipimport.zipimporter):
                     installed = True
                     for (k,v) in sys.path_importer_cache.values():
                         if isinstance(v,imp):
-                            del sys.path_importer_cache[k]
+                            sys.path_importer_cache[k] = cls(k)
             except TypeError:
                 pass
         if not installed:

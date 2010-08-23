@@ -17,6 +17,7 @@ With no additional work you may already find a small speedup when importing
 from a zipfile, since zipimportx does fewer stat() calls than the standard
 zipimport implementation.
 
+
 To further speed up the loading of a zipfile, you can pre-compute the 
 "directory information" dictionary and store it in a separate index file.
 This will reduce the time spent parsing information out of the zipfile.
@@ -49,10 +50,5 @@ into your application's startup script.  Do this somewhere in your build::
     ''' % (inspect.getsource(zipimportx),)
 
     freeze_this_script_somehow(SCRIPT)
-    zipimportx.zipimporter("path/to/frozen/library.zip").write_indexes()
-
-Note also that imports will almost certainly *break* if the index does not
-reflect the actual contents of the zipfile.  This module is therefore most
-useful for frozen apps and other situations where the zipfile is not expected
-to change.
+    zipimportx.zipimporter("path/to/frozen/library.zip").write_index()
 
