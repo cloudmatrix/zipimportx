@@ -9,7 +9,7 @@ import zipfile
 import zipimportx
 
 #  I don't actually use these, I just add them to a zipfile.
-#  There here so I can grab __file__ off them.
+#  They're here so I can grab __file__ off them.
 import distutils
 import logging
 import email
@@ -103,7 +103,6 @@ class TestZipImportX(unittest.TestCase):
         fn = lib + os.sep + os.path.join("zipimportx","tests","__init__.pyc")
         self.assertEquals(zxT.__file__,fn)
         
-
     def _do_timeit_init(self,lib):
         """Return unindexed and indexed initialisation times."""
         z_setupcode = "import zipimport"

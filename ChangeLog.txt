@@ -1,4 +1,18 @@
 
+v0.2.1:
+
+    * Avoid touching the filesystem if given a path inside an already-loaded
+      zipfile (which happens whenever importing from a package).
+          * the default zipimporter trims the prefix by walking backwards down
+            the path, calling stat() until it finds a real file.  We do the
+            same but hit _zip_directory_cache instead of the filesystem.
+          * unfortunately this has meant re-implementing basically all methods
+            of zipimporter, since there's no way to set the "prefix" attr on
+            the c-level zipimporter object without calling its constructor and
+            hence hitting the filesystem.
+          * fortunately, since the import process is mostly IO-bound this has
+            not adversely affected the performance of this module.
+
 v0.2.0:
 
     * only generate the index file for the host platform by default; indexes
