@@ -372,7 +372,12 @@ class zipimporter(zipimport.zipimporter):
         """
         modnm = fullname.rsplit(".")[-1]
         code,filepath,ispkg = self._get_module_code(fullname)
-        mod = sys.modules.get(fullname)
+        try:
+            mod = sys.modules.get(fullname)
+        except NameError:
+            #  py2exe sometimes deletes sys from the __main__ namespace
+            import sys
+            mod = sys.modules.get(fullname)
         if mod is None:
             mod = imp.new_module(fullname)
             sys.modules[fullname] = mod
