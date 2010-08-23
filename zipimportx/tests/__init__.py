@@ -25,7 +25,7 @@ class TestZipImportX(unittest.TestCase):
         lib = "libsmall.zip"
         lib = os.path.abspath(os.path.join(os.path.dirname(__file__),lib))
         if not os.path.exists(lib):
-            zf = zipfile.PyZipFile(lib,"w")
+            zf = zipfile.PyZipFile(lib,"w",compression=zipfile.ZIP_DEFLATED)
             zf.writepy(os.path.dirname(zipimportx.__file__))
             zf.writepy(os.path.dirname(distutils.__file__))
             zf.writepy(os.path.dirname(logging.__file__))
@@ -87,6 +87,7 @@ class TestZipImportX(unittest.TestCase):
         lib = "libsmall.zip"
         lib = os.path.abspath(os.path.join(os.path.dirname(__file__),lib))
         i = zipimportx.zipimporter(lib)
+        del sys.modules["zipimportx"]
         self.assertTrue(i.find_module("zipimportx") is i)
         self.assertTrue(i.find_module("nonexistent") is None)
         fn = lib + os.sep + os.path.join("zipimportx","__init__.pyc")
@@ -111,6 +112,7 @@ class TestZipImportX(unittest.TestCase):
         z_timer = timeit.Timer(z_testcode,z_setupcode)
         z_time = min(self._do_timeit3(z_timer))
         x_setupcode = "import zipimport; import zipimportx; " \
+                      "del sys.modules['zipimportx']; " \
                       "zipimportx.zipimporter(%r).write_index()" % (lib,)
         x_testcode = "".join(("zipimport._zip_directory_cache.clear(); ",
                               "i = zipimportx.zipimporter(%r); " % (lib,)))
@@ -123,14 +125,14 @@ class TestZipImportX(unittest.TestCase):
         z_setupcode = "import zipimport; " \
                       "zipimport._zip_directory_cache.clear(); " \
                       "i = zipimport.zipimporter(%r)" % (lib,)
-        z_testcode = "i.load_module('zipimportx')"
+        z_testcode = "i.load_module('zipimportx'); del sys.modules['zipimportx']"
         z_timer = timeit.Timer(z_testcode,z_setupcode)
         z_time = min(self._do_timeit3(z_timer))
         x_setupcode = "".join(("import zipimport; import zipimportx; ",
                           "zipimportx.zipimporter(%r).write_index(); " % (lib,),
                           "zipimport._zip_directory_cache.clear(); ",
                           "i = zipimportx.zipimporter(%r)" % (lib,)))
-        x_testcode = "i.load_module('zipimportx')"
+        x_testcode = "i.load_module('zipimportx'); del sys.modules['zipimportx']"
         x_timer = timeit.Timer(x_testcode,x_setupcode)
         x_time = min(self._do_timeit3(x_timer))
         return (z_time,x_time)

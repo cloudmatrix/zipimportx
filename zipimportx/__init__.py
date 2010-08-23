@@ -323,7 +323,7 @@ class zipimporter(zipimport.zipimporter):
         if not compress:
             return raw_data
         else:
-            return zlib.decompress(raw_data)
+            return zlib.decompress(raw_data,-15)
 
     def find_module(self,fullname,path=None):
         """find_module(fullname, path=None) -> self or None.
