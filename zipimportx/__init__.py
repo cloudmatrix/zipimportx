@@ -107,6 +107,11 @@ if "time" in sys.builtin_module_names:
 else:
     time = None
 
+if "zlib" in sys.builtin_module_names:
+    import zlib
+else:
+    zlib = None
+
 
 archive_index = ".idx"
 if sys.platform == "win32":
@@ -368,6 +373,9 @@ class zipimporter(zipimport.zipimporter):
         if raw:
             return raw_data
         if compress:
+            global zlib
+            if zlib is None:
+                import zlib
             return zlib.decompress(raw_data,-15)
         return raw_data
 
