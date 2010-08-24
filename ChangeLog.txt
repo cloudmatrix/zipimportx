@@ -1,6 +1,10 @@
 
 v0.3.0:
 
+    * Always name the index <archivepath>.idx regardless of the platform; if
+      it's found to contain invalid separators then it's ignored.
+    * Allow converting a zipfile to inline python code that can be frozen
+      directly into the application, avoiding any file IO for the imports.
     * Avoid touching the filesystem if given a path inside an already-loaded
       zipfile (which happens whenever importing from a package).
           * the default zipimporter trims the prefix by walking backwards down
@@ -12,8 +16,6 @@ v0.3.0:
             hence hitting the filesystem.
           * fortunately, since the import process is mostly IO-bound this has
             not adversely affected the performance of this module.
-    * Always name the index <archivepath>.idx regardless of the platform; if
-      it's found to contain invalid separators then it's ignored.
     * When installing the new zipimporter class, also remove any instances of
       the old class from sys.path_importer_cache
 
