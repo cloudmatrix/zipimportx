@@ -372,6 +372,7 @@ class zipimporter(zipimport.zipimporter):
         """
         modnm = fullname.rsplit(".")[-1]
         code,filepath,ispkg = self._get_module_code(fullname)
+        created = False
         try:
             mod = sys.modules.get(fullname)
         except NameError:
@@ -381,11 +382,17 @@ class zipimporter(zipimport.zipimporter):
         if mod is None:
             mod = imp.new_module(fullname)
             sys.modules[fullname] = mod
-        mod.__file__ = filepath
-        mod.__loader__ = self
-        if ispkg:
-            mod.__path__ = [filepath.rsplit(SEP,1)[0]]
-        exec code in mod.__dict__
+            created = True
+        try:
+            mod.__file__ = filepath
+            mod.__loader__ = self
+            if ispkg:
+                mod.__path__ = [filepath.rsplit(SEP,1)[0]]
+            exec code in mod.__dict__
+        except Exception:
+            if created:
+                sys.modules.pop(fullname)
+            raise
         return mod
 
     def get_data(self,pathname):
@@ -499,12 +506,66 @@ class zipimporter(zipimport.zipimporter):
         with open(self.archive + archive_index,"wb") as f:
             marshal.dump(index,f)
 
+    def get_inline_code(self,platform=None,bootstrap_zipimportx=True):
+        """Get python code for inline loading of the zipfile
+
+        This method returns python sourcecode that, when executed, provides
+        in-memory data equivalent to having the zipfile on sys.path.  It's
+        similar to the builtin "frozen modules" functionality of the python
+        interpreter, but implemented entirely in userspace code.
+
+        If the keyword argument "bootstrap_zipimportx" is False, the returned
+        code will not include the necessary definitions to bootstrap the 
+        zipimportx module.
+        """
+        import os
+        import inspect
+        import zipimportx
+        name = "<zipimportx-%s>" % (os.urandom(8).encode("hex"),)
+        index = zipimport._zip_directory_cache[self.archive].copy()
+        #  The only field we need to keep is the "compressed" field
+        #  Don't store the __file__ field, it won't be correct.
+        #  Besides, we can re-create it as needed.
+        for (key,info) in index.iteritems():
+            compressed = info[1]
+            index[key] = ("",compressed,None,None,None,None,None,None)
+        #  Correct for path separators on the requested platform.
+        if platform is not None:
+            if sys.platform == "win32" and platform != "win32":
+                win32_index = index
+                index = {}
+                for (key,info) in win32_index.iteritems():
+                    index[key.replace("\\","/")] = info
+            elif sys.platform != "win32" and platform == "win32":
+                posix_index = index
+                index = {}
+                for (key,info) in posix_index.iteritems():
+                    index[key.replace("/","\\")] = info
+        #  Add the actual data for each file into the index
+        for (key,info) in index.iteritems():
+            data = self._get_data(key,None,raw=True)
+            index[key] = tuple(list(info) + [data])
+        #  Construct the necessary code:
+        #      * get the zipimporter class
+        #      * insert the index into _zip_directory_cache
+        #      * create a zipimporter instance and put it in the meta-path
+        code = ["import sys\nimport zipimport"]
+        code.append("if %r not in zipimport._zip_directory_cache:" % (name,))
+        code.append("  print >>sys.stderr, 'ZIPIMPORTX', %r" % (name,))
+        if bootstrap_zipimportx:
+            code.append(inspect.getsource(zipimportx).replace("\n","\n  "))
+        else:
+            code.append("  from zipimportx import zipimporter")
+        code.append("  zipimport._zip_directory_cache[%r] = %s" % (name,index,))
+        code.append("  sys.meta_path.append(zipimporter(%r))" % (name,))
+        return "\n".join(code)
+
     @classmethod
     def install(cls):
         """Install this class into the import machinery.
 
         This class method installs the custom zipimporter class into the import
-        machinery of the running process, relacing any of its superclasses
+        machinery of the running process, replacing any of its superclasses
         that may be there.
         """
         installed = False
