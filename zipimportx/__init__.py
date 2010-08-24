@@ -636,13 +636,11 @@ class zipimporter(zipimport.zipimporter):
                 if issubclass(cls,imp):
                     sys.path_hooks[i] = cls
                     installed = True
-                    for (k,v) in sys.path_importer_cache.values():
-                        if isinstance(v,imp):
-                            sys.path_importer_cache[k] = cls(k)
             except TypeError:
                 pass
         if not installed:
             sys.path_hooks.append(cls)
+        sys.path_importer_cache.clear()
 
 
 if __name__ == "__main__":
