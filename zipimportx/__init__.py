@@ -98,10 +98,14 @@ __version__ = "%d.%d.%d%s" % __ver_tuple__
 
 import sys
 import imp
-import time
 import zlib
 import marshal
 import zipimport
+
+if "time" in sys.builtin_module_names:
+    import time
+else:
+    time = None
 
 
 archive_index = ".idx"
@@ -297,6 +301,9 @@ class zipimporter(zipimport.zipimporter):
         Returns True if the bytecode file is newer than the source file, False
         otherwise.
         """
+        #  If there's no time module, we can't do the check
+        if time is None:
+            return True
         #  If there's no source file, then it must be OK to use the bytecode
         if srctoc is None:
             return True
