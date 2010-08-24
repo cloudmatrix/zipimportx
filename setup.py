@@ -37,12 +37,12 @@ except Exception:
 
 NAME = "zipimportx"
 VERSION = info["__version__"]
-DESCRIPTION = "faster zip imports using pre-processed index files"
+DESCRIPTION = "faster zipfile imports for frozen python apps"
 AUTHOR = "Ryan Kelly"
 AUTHOR_EMAIL = "rfk@cloudmatrix.com.au"
 URL = "http://github.com/cloudmatrix/zipimportx/"
 LICENSE = "BSD"
-KEYWORDS = "zipfile zip import"
+KEYWORDS = "zipfile zip import zipimport"
 LONG_DESC = info["__doc__"]
 
 PACKAGES = ["zipimportx","zipimportx.tests"]

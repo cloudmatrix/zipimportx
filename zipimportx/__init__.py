@@ -2,55 +2,70 @@
 #  All rights reserved; available under the terms of the BSD License.
 """
 
-zipimportx:  faster zip imports using pre-processed index files
-===============================================================
+zipimportx:  faster zipfile imports for frozen python apps
+==========================================================
 
 
-This package aims to speed up imports from zipfiles by reducing the overhead
-of finding and parsing the zipfile contents.  It exports a single useful name,
-zipimporter, which is a drop-in replacement for the standard zipimporter class.
+This package aims to speed up imports from zipfiles for frozen python apps (and
+other scenarios where the zipfile is assumed not to change) by taking several
+shortcuts that aren't available to the standard zipimport module.
 
-To replace the builtin zipimport mechanism with zipimportx, do the following:
+It exports a single useful name, "zipimporter", which is a drop-in replacement
+for the standard zipimporter class. To replace the builtin zipimport mechanism
+with zipimportx, do the following::
 
     import zipimportx
     zipimportx.zipimporter.install()
 
 With no additional work you may already find a small speedup when importing 
-from a zipfile, since zipimportx does fewer stat() calls than the standard
+from a zipfile.  Since zipimportx assumes that the zipfile will not change or
+go missing, it does fewer stat() calls and integrity checks than the standard
 zipimport implementation.
 
 
-To further speed up the loading of a zipfile, you can pre-compute the 
-"directory information" dictionary and store it in a separate index file.
-This will reduce the time spent parsing information out of the zipfile.
-
-To create an index for a given zipfile, do the following::
+To further speed up the loading of a zipfile, you can pre-compute the zipimport
+"directory information" dictionary and store it in a separate index file. This
+will reduce the time spent parsing information out of the zipfile.  Create an
+index file like this::
 
     from zipimportx import zipimporter
     zipimporter("mylib.zip").write_index()
 
 This will create the file "mylib.zip.idx" containing the pre-parsed zipfile
-directory information (specifically, it will contain a marshalled dictionary
-similar to those found in zipimport._zip_directory_cache).
+directory information.  Specifically, it will contain a marshalled dictionary
+object with the same structure as those in zipimport._zip_directory_cache.
 
 In my tests, use of these indexes speeds up the initial loading of a zipfile by 
 about a factor of 3 on Linux, and a factor of 5 on Windows.
 
 
 To further speed up the loading of a collection of modules, you can "preload"
-the actual module data by including it in the index.  This allows the data for
-several modules to be loaded in a single sequential read rather than requiring
-a separate read for each module.  Preload module data like this::
+the actual module data by including it directly in the index.  This allows the
+data for several modules to be loaded in a single sequential read rather than
+requiring a separate read for each module.  Preload module data like this::
 
     from zipimportx import zipimporter
     zipimporter("mylib.zip").write_index(preload=["mymod*","mypkg*"])
 
+Each entry in the "preload" list is a filename pattern.  Files from the zipfile
+that match any of these patterns will be preloaded when the zipfile is first
+accessed for import.  You may want to remove them from the actual zipfile in
+order to save space.
 
-Note that imports will almost certainly *break* if the index does not reflect
-the actual contents of the zipfile.  This module is therefore most useful
-for frozen apps and other situations where the zipfile is not expected to
-change.
 
+Finally, it's possible to convert a zipfile into inline python code and include
+that code directly in your frozen application.  This can simulate the effect
+of having that zipfile on sys.path, while avoiding any fie IO during the import
+process.  To get the necessary sourcecode, do the following::
+
+    from zipimportx import zipimporter
+    code = zipimporter("mylib.zip").get_inline_code()
+
+
+Finally, it's worth re-iterating the big assumption made by this module: the
+zipfile must never change or go missing.  If the data in the index does not
+reflect the actual contents of the zipfile, imports will break in unspecified
+and probably disasterous ways.
 
 Note also that this package uses nothing but builtin modules.  To bootstrap
 zipfile imports for a frozen application, you can inline this module's code
@@ -355,12 +370,23 @@ class zipimporter(zipimport.zipimporter):
         Search for a module specified by 'fullname'. 'fullname' must be the
         fully qualified (dotted) module name. It returns the zipimporter
         instance itself if the module was found, or None if it wasn't.
-        The optional 'path' argument is ignored -- it's there for compatibility
-        with the importer protocol.
+
+        The optional 'path' argument is interpreted as required by the importer
+        protocol (which means you can put one of these objects in sys.meta_path
+        and it will behave appropriately).
         """
-        mi = self._get_module_type(fullname)
-        if mi is not None:
-            return self
+        if path is None:
+            mi = self._get_module_type(fullname)
+            if mi is not None:
+                return self
+        else:
+            if isinstance(path,basestring):
+                return None
+            for p in path:
+                if p == self.archive:
+                    return self.find_module(fullname)
+                if p.startswith(self.archive + SEP):
+                    return self.__class__(p).find_module(fullname)
         return None
 
     def load_module(self,fullname):
@@ -521,7 +547,8 @@ class zipimporter(zipimport.zipimporter):
         import os
         import inspect
         import zipimportx
-        name = "<zipimportx-%s>" % (os.urandom(8).encode("hex"),)
+        ilid = os.urandom(8).encode("hex")
+        name = "<zipimportx-%s>" % (ilid,)
         index = zipimport._zip_directory_cache[self.archive].copy()
         #  The only field we need to keep is the "compressed" field
         #  Don't store the __file__ field, it won't be correct.
@@ -547,17 +574,52 @@ class zipimporter(zipimport.zipimporter):
             index[key] = tuple(list(info) + [data])
         #  Construct the necessary code:
         #      * get the zipimporter class
+        #      * create sublcass to do path munging
         #      * insert the index into _zip_directory_cache
         #      * create a zipimporter instance and put it in the meta-path
         code = ["import sys\nimport zipimport"]
         code.append("if %r not in zipimport._zip_directory_cache:" % (name,))
-        code.append("  print >>sys.stderr, 'ZIPIMPORTX', %r" % (name,))
         if bootstrap_zipimportx:
             code.append(inspect.getsource(zipimportx).replace("\n","\n  "))
         else:
-            code.append("  from zipimportx import zipimporter")
-        code.append("  zipimport._zip_directory_cache[%r] = %s" % (name,index,))
-        code.append("  sys.meta_path.append(zipimporter(%r))" % (name,))
+            code.append("  from zipimportx import zipimporter, SEP")
+        #  Unfortunately py2exe (at least) expects to be able to find dylib
+        #  files relative to dirname(self.archive).  We pretend that the
+        #  inlined archive is relative to sys.prefix.
+        supnm = "zipimporter_base_" + ilid
+        code.append("  %s = zipimporter" % (supnm,))
+        code.append("  class zipimporter_%s(zipimporter):" % (ilid,))
+        code.append("    def __init__(self,archivepath):")
+        code.append("      idx = archivepath.find(%r)" % (name,))
+        code.append("      if idx != -1:")
+        code.append("        archivepath = archivepath[idx:]")
+        code.append("      %s.__init__(self,archivepath)" % (supnm,))
+        code.append("    @property")
+        code.append("    def archive(self):")
+        code.append("      archive = %s.archive.__get__(self)" % (supnm,))
+        code.append("      try:")
+        code.append("          return sys.prefix + SEP + archive")
+        code.append("      except NameError:")
+        code.append("          import sys")
+        code.append("          return sys.prefix + SEP + archive")
+        code.append("    def find_module(self,fullname,path=None):")
+        code.append("      if path is not None:")
+        code.append("        path = [self._fix_path(p) for p in path]")
+        code.append("      return %s.find_module(self,fullname,path)"%(supnm,))
+        code.append("    def get_data(self,pathname):")
+        code.append("      pathname = self._fix_path(pathname)")
+        code.append("      return %s.get_data(self,pathname)"%(supnm,))
+        code.append("    def _fix_path(self,path):")
+        code.append("      idx = path.find(%r)" % (name,))
+        code.append("      if idx != -1:")
+        code.append("        try:")
+        code.append("          path = sys.prefix + SEP + path[idx:]")
+        code.append("        except NameError:")
+        code.append("          import sys")
+        code.append("          path = sys.prefix + SEP + path[idx:]")
+        code.append("      return path")
+        code.append("  zipimport._zip_directory_cache[%r] = %s"%(name,index,))
+        code.append("  sys.meta_path.append(zipimporter_%s(%r))"%(ilid,name,))
         return "\n".join(code)
 
     @classmethod
@@ -584,6 +646,8 @@ class zipimporter(zipimport.zipimporter):
 
 
 if __name__ == "__main__":
-    zipimporter.install()
+    if not sys.modules.get("zipimportx"):
+        zipimporter.install()
+        sys.modules["zipimportx"] = sys.modules["__main__"]
 
 
