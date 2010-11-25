@@ -121,6 +121,9 @@ else:
     SEP = "/"
     BADSEP = "\\"
 
+ZipImportError = zipimport.ZipImportError
+_zip_directory_cache = zipimport._zip_directory_cache
+_zip_directory_preload = {}
 
 
 class zipimporter(zipimport.zipimporter):
@@ -148,7 +151,7 @@ class zipimporter(zipimport.zipimporter):
         #  we do it by looking in the directory cache.
         archive = archivepath; prefix = ""
         while archive:
-            cached_files = zipimport._zip_directory_cache.get(archive)
+            cached_files = _zip_directory_cache.get(archive)
             if cached_files is not None:
                 archivepath = archive
                 break
@@ -176,7 +179,7 @@ class zipimporter(zipimport.zipimporter):
                         cached_files = None
                         break
                 if cached_files is not None:
-                    zipimport._zip_directory_cache[archivepath] = cached_files
+                    _zip_directory_cache[archivepath] = cached_files
         #  If the archive is in the cache, we bypass the default implementation
         #  since it wants to keep checking the filesystem for things we know
         #  (well, OK, *assume*) are still there.
@@ -515,7 +518,7 @@ class zipimporter(zipimport.zipimporter):
         current platform; pass platform="win32" or platform="posix" to make
         an index for a specific platform.
         """
-        index = zipimport._zip_directory_cache[self.archive].copy()
+        index = _zip_directory_cache[self.archive].copy()
         #  Don't store the __file__ field, it won't be correct.
         #  Besides, we can re-create it as needed.
         for (key,info) in index.iteritems():
@@ -564,7 +567,7 @@ class zipimporter(zipimport.zipimporter):
         import zipimportx
         ilid = os.urandom(8).encode("hex")
         name = "<zipimportx-%s>" % (ilid,)
-        index = zipimport._zip_directory_cache[self.archive].copy()
+        index = _zip_directory_cache[self.archive].copy()
         #  The only field we need to keep is the "compressed" field
         #  Don't store the __file__ field, it won't be correct.
         #  Besides, we can re-create it as needed.
@@ -661,6 +664,16 @@ class zipimporter(zipimport.zipimporter):
 if __name__ == "__main__":
     if not sys.modules.get("zipimportx"):
         zipimporter.install()
-        sys.modules["zipimportx"] = sys.modules["__main__"]
+        thismodule = sys.modules.get(__name__)
+        if getattr(thismodule,"zipimporter",None) is not zipimporter:
+            #  Uh-oh!  We're running as some sort of bizarre script and
+            #  not as a module.  Create a fake one.
+            thismodule = imp.new_module("zipimportx")
+            thismodule.zipimporter = zipimporter
+            thismodule.SEP = SEP
+            thismodule.BADSEP = BADSEP
+            thismodule._zip_directory_cache = _zip_directory_cache
+            thismodule.ZipImportError = ZipImportError
+        sys.modules["zipimportx"] = thismodule
 
 

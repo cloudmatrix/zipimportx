@@ -1,4 +1,9 @@
 
+v0.3.1:
+
+    * Make bootstrapping be more robust if it's not running from within a
+      module (e.g. when run by the cxFreeze init script)
+
 v0.3.0:
 
     * Always name the index <archivepath>.idx regardless of the platform; if
