@@ -53,6 +53,9 @@ class TestZipImportX(unittest.TestCase):
         zf.writepy(os.path.dirname(zipimportx.__file__))
         zf.writepy(LIBHOME)
         for (dirnm,subdirs,files) in os.walk(LIBHOME):
+            if os.path.basename(dirnm) in ("lib-python","test",):
+                del subdirs[:]
+                continue
             if "__init__.pyc" in files:
                 del subdirs[:]
                 try:
@@ -87,7 +90,7 @@ class TestZipImportX(unittest.TestCase):
             zipimportx.zipimporter(lib).write_index()
             z_size = os.stat(lib).st_size
             x_size = os.stat(lib+".idx").st_size
-            self.assertTrue(z_size / x_size > 40)
+            self.assertTrue(z_size / x_size > 30)
 
     def test_import_still_works(self):
         lib = "libsmall.zip"
